@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marchés Polymarket</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="wrap">
+  <nav class="tabs" aria-label="Plateformes">
+    <a href="index.html">Hyperliquid</a>
+    <a href="polymarket.html" aria-current="page">Polymarket</a>
+  </nav>
+  <header class="top">
+    <div>
+      <h1>Marchés Polymarket</h1>
+      <p class="sub">Probabilités implicites, volumes et carnets d'ordres, en lecture seule.</p>
+    </div>
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <span id="updated">Chargement…</span>
+      <button class="btn" id="refresh" type="button">Actualiser</button>
+      <button class="btn" id="theme" type="button">Thème</button>
+    </div>
+  </header>
+
+  <div class="notice">
+    Données publiques des API Gamma, CLOB et Data de Polymarket. Aucun wallet, aucune clé, aucun ordre :
+    cet outil sert uniquement à consulter et analyser les marchés. Seuls les 300 marchés les plus actifs
+    de la catégorie choisie sont chargés.
+  </div>
+
+  <section class="kpis" aria-label="Indicateurs">
+    <div class="kpi"><div class="label">Événements chargés</div><div class="value" id="k-count">–</div><div class="hint" id="k-count-hint">&nbsp;</div></div>
+    <div class="kpi"><div class="label">Volume 24 h</div><div class="value" id="k-vol">–</div><div class="hint">en USDC, événements chargés</div></div>
+    <div class="kpi"><div class="label">Argent engagé</div><div class="value" id="k-oi">–</div><div class="hint">positions ouvertes, événements chargés</div></div>
+    <div class="kpi"><div class="label">Événement le plus actif</div><div class="value" id="k-top">–</div><div class="hint" id="k-top-hint">&nbsp;</div></div>
+    <div class="kpi"><div class="label">Plus forte variation 24 h</div><div class="value" id="k-move">–</div><div class="hint" id="k-move-hint">&nbsp;</div></div>
+  </section>
+
+  <div class="filters">
+    <input type="search" id="q" placeholder="Rechercher (en anglais : Trump, Bitcoin, Arsenal…)" aria-label="Rechercher">
+    <select id="sort" aria-label="Trier par">
+      <option value="vol">Trier : volume 24 h</option>
+      <option value="oi">Trier : argent engagé</option>
+      <option value="move">Trier : variation 24 h</option>
+      <option value="end">Trier : échéance proche</option>
+      <option value="prob">Trier : probabilité</option>
+    </select>
+    <label class="check"><input type="checkbox" id="expired"> Inclure les marchés fermés aux ordres</label>
+  </div>
+  <div class="filters"><div class="chips" id="cats" role="group" aria-label="Catégories"></div></div>
+
+  <div class="layout">
+    <section class="panel" aria-label="Liste des événements">
+      <div class="list-head">
+        <span>Événement</span><span>Probabilité</span><span class="r">24 h</span><span class="r vol">Volume</span>
+      </div>
+      <div class="rows" id="rows"><div class="empty">Chargement des marchés…</div></div>
+    </section>
+    <section class="panel detail" id="detail" aria-live="polite">
+      <div class="empty">Sélectionne un événement pour voir son historique et son carnet d'ordres.</div>
+    </section>
+  </div>
+</div>
+
+<script src="assets/common.js"></script>
+<script>
+const GAMMA = "https://gamma-api.polymarket.com";
+const CLOB = "https://clob.polymarket.com";
+const DATA = "https://data-api.polymarket.com";
+const REFRESH_MS = 60_000;
+const PAGES = 3; // 100 markets per page
+
+// Polymarket tag ids, used to filter on the server side.
+const CATEGORIES = [
+  { label: "Tous", tag: null },
+  { label: "Politique", tag: 2 },
+  { label: "Sport", tag: 1 },
+  { label: "Crypto", tag: 21 },
+  { label: "Économie", tag: 100328 },
+  { label: "Finance", tag: 120 },
+  { label: "Géopolitique", tag: 100265 },
+  { label: "Tech", tag: 1401 },
+];
+const RANGES = {
+  "24 h": { s: 86_400, fidelity: 5 },
+  "7 j": { s: 7 * 86_400, fidelity: 60 },
+  "30 j": { s: 30 * 86_400, fidelity: 240 },
+  "1 an": { s: 365 * 86_400, fidelity: 1440 },
+};
+
+const state = {
+  events: [],
+  category: "Tous",
+  selected: null,       // event id
+  selectedOption: null, // option key inside the event
+  fullEvent: null,      // { id, options } fetched for the selected event
+  range: "7 j",
+};
+
+// ---------- API ----------
+
+async function get(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  return res.json();
+}
+
+async function loadMarkets(tag) {
+  const pages = await Promise.all(Array.from({ length: PAGES }, (_, i) => {
+    const qs = new URLSearchParams({ active: "true", closed: "false", limit: "100", offset: String(i * 100), order: "volume24hr", ascending: "false" });
+    if (tag != null) qs.set("tag_id", tag);
+    return get(`${GAMMA}/markets?${qs}`);
+  }));
+  return pages.flat();
+}
+
+// ---------- Model ----------
+
+const parseList = (s) => { try { return JSON.parse(s || "[]"); } catch { return []; } };
+const isYesNo = (outcomes) => outcomes.length === 2 && outcomes[0] === "Yes" && outcomes[1] === "No";
+
+// A market becomes one option (its "Yes" side), or one option per outcome when it is
+// the only market of its event and the outcomes are named (e.g. "Chiefs" / "Seahawks").
+function marketOptions(m, alone, eventTitle) {
+  const outcomes = parseList(m.outcomes);
+  const prices = parseList(m.outcomePrices).map(Number);
+  const tokens = parseList(m.clobTokenIds);
+  const change = m.oneDayPriceChange == null ? null : Number(m.oneDayPriceChange);
+  const base = { conditionId: m.conditionId, vol: Number(m.volume24hr) || 0, open: m.acceptingOrders !== false };
+  const name = m.groupItemTitle || m.question;
+  const sameAsEvent = name === eventTitle;
+  if (isYesNo(outcomes) || !alone) {
+    const label = isYesNo(outcomes) ? name : sameAsEvent ? outcomes[0] : `${name} : ${outcomes[0]}`;
+    return [{ ...base, key: `${m.id}:0`, label, prob: prices[0], change, token: tokens[0] }];
+  }
+  return outcomes.map((o, i) => ({
+    ...base, key: `${m.id}:${i}`, label: o, prob: prices[i], token: tokens[i],
+    change: change == null ? null : i === 0 ? change : -change,
+  }));
+}
+
+function buildEvents(markets) {
+  const groups = new Map();
+  for (const m of markets) {
+    const e = m.events?.[0] || { id: `m${m.id}`, title: m.question, endDate: m.endDate };
+    if (!groups.has(e.id)) groups.set(e.id, { event: e, markets: [] });
+    groups.get(e.id).markets.push(m);
+  }
+  return [...groups.values()].map(({ event: e, markets: ms }) => eventModel(e, ms));
+}
+
+function eventModel(e, markets) {
+  const alone = markets.length === 1;
+  const multi = e.negRisk || e.enableNegRisk;
+  const options = markets.flatMap((m) => marketOptions(m, alone, e.title))
+    .sort(multi || alone ? (a, b) => (b.prob ?? -1) - (a.prob ?? -1) : (a, b) => b.vol - a.vol);
+  const live = options.filter((o) => o.open);
+  const top = live[0] || options[0];
+  const movers = live.filter((o) => o.change != null && o.vol > 1000);
+  const biggest = movers.sort((a, b) => Math.abs(b.change) - Math.abs(a.change))[0];
+  const end = e.endDate ? new Date(e.endDate) : null;
+  return {
+    id: String(e.id), slug: e.slug, title: e.title, end, options, multi,
+    open: live.length > 0,
+    prob: top?.prob, probLabel: top ? `Probabilité « ${top.label} »` : "",
+    change: biggest ? biggest.change : null, changeLabel: biggest?.label,
+    vol: Number(e.volume24hr) || options.reduce((s, o) => s + o.vol, 0),
+    oi: Number(e.openInterest) || 0,
+  };
+}
+
+function visibleEvents() {
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  const withClosed = document.getElementById("expired").checked;
+  const sort = document.getElementById("sort").value;
+  const list = state.events.filter((e) =>
+    (withClosed || e.open) &&
+    (!q || `${e.title} ${e.options.map((o) => o.label).join(" ")}`.toLowerCase().includes(q))
+  );
+  const by = {
+    vol: (a, b) => b.vol - a.vol,
+    oi: (a, b) => b.oi - a.oi,
+    move: (a, b) => Math.abs(b.change ?? 0) - Math.abs(a.change ?? 0),
+    end: (a, b) => (a.end?.getTime() ?? Infinity) - (b.end?.getTime() ?? Infinity),
+    prob: (a, b) => (b.prob ?? -1) - (a.prob ?? -1),
+  }[sort];
+  return list.sort(by);
+}
+
+// ---------- Rendering: list & KPIs ----------
+
+function renderCategories() {
+  document.getElementById("cats").innerHTML = CATEGORIES
+    .map((c) => `<button type="button" class="btn" data-cat="${esc(c.label)}" aria-pressed="${c.label === state.category}">${esc(c.label)}</button>`)
+    .join("");
+}
+
+function renderKpis() {
+  const open = state.events.filter((e) => e.open);
+  document.getElementById("k-count").textContent = open.length.toLocaleString("fr-FR");
+  document.getElementById("k-count-hint").textContent = `${open.reduce((s, e) => s + e.options.length, 0)} issues, catégorie ${state.category}`;
+  document.getElementById("k-vol").textContent = fmtUsd(open.reduce((s, e) => s + e.vol, 0));
+  document.getElementById("k-oi").textContent = fmtUsd(open.reduce((s, e) => s + e.oi, 0));
+  const top = [...open].sort((a, b) => b.vol - a.vol)[0];
+  document.getElementById("k-top").textContent = top ? top.title : "–";
+  document.getElementById("k-top-hint").textContent = top ? `${fmtUsd(top.vol)} échangés en 24 h` : "";
+  const mover = open.filter((e) => e.change != null).sort((a, b) => Math.abs(b.change) - Math.abs(a.change))[0];
+  document.getElementById("k-move").textContent = mover ? fmtPts(mover.change) : "–";
+  document.getElementById("k-move-hint").textContent = mover ? `${mover.title} (${mover.changeLabel})` : "";
+}
+
+function renderList() {
+  const list = visibleEvents();
+  const el = document.getElementById("rows");
+  if (!list.length) { el.innerHTML = `<div class="empty">Aucun événement ne correspond à ces filtres.</div>`; return; }
+  el.innerHTML = list.map((e) => {
+    const p = e.prob ?? 0;
+    const extra = e.options.length > 1 ? e.options.slice(0, 3).map((o) => `${esc(o.label)} ${fmtPct(o.prob)}`).join(" · ") : "";
+    return `<button type="button" class="row" data-id="${esc(e.id)}" aria-pressed="${e.id === state.selected}">
+      <span style="min-width:0">
+        <span class="title" title="${esc(e.title)}">${esc(e.title)}</span>
+        <span class="meta">${e.open ? "" : "fermé · "}${e.end ? `échéance ${fmtDate(e.end)}` : ""} · ${fmtUsd(e.oi)} engagés${extra ? ` · ${extra}` : ""}</span>
+      </span>
+      <span class="prob" title="${esc(e.probLabel)}">
+        <span class="bar"><span style="width:${(p * 100).toFixed(1)}%"></span></span>
+        <span class="val">${fmtPct(e.prob)}<span class="odds">${fmtOdds(e.prob)}</span></span>
+      </span>
+      <span class="r">${deltaHtml(e.change)}</span>
+      <span class="r vol">${e.vol ? fmtUsd(e.vol) : "–"}</span>
+    </button>`;
+  }).join("");
+}
+
+// ---------- Rendering: detail ----------
+
+const MAX_OPTIONS = 25;
+
+async function selectEvent(id) {
+  state.selected = id;
+  state.selectedOption = null;
+  state.fullEvent = null;
+  renderList();
+  renderDetail();
+  await loadFullEvent(id);
+}
+
+// The list only holds the most active markets; fetch the whole event for its full set of options.
+async function loadFullEvent(id) {
+  if (id.startsWith("m")) return;
+  try {
+    const e = await get(`${GAMMA}/events/${id}`);
+    if (state.selected !== id) return;
+    const markets = (e.markets || []).filter((m) => m.active && !m.closed);
+    state.fullEvent = { id, model: eventModel(e, markets) };
+    if (!document.querySelector("#chart:hover")) renderDetail();
+  } catch { /* keep the partial view from the list */ }
+}
+
+function renderDetail() {
+  const el = document.getElementById("detail");
+  const listed = state.events.find((x) => x.id === state.selected);
+  const ev = state.fullEvent?.id === state.selected ? state.fullEvent.model : listed;
+  if (!ev) { el.innerHTML = `<div class="empty">Sélectionne un événement pour voir son historique et son carnet d'ordres.</div>`; return; }
+
+  const withClosed = document.getElementById("expired").checked;
+  const options = ev.options.filter((o) => withClosed || o.open);
+  const shown = options.length ? options : ev.options;
+  if (!shown.some((o) => o.key === state.selectedOption)) state.selectedOption = shown[0]?.key;
+  const opt = shown.find((o) => o.key === state.selectedOption);
+  const sum = shown.reduce((s, o) => s + (o.prob || 0), 0);
+
+  const optionsHtml = shown.length > 1 ? `
+    <div class="section-title"><span>Issues${ev.multi ? " possibles" : " et sous-marchés"}</span><span class="note" style="margin:0">clique pour voir le détail</span></div>
+    <div class="options">${shown.slice(0, MAX_OPTIONS).map((o) => `
+      <button type="button" class="opt" data-opt="${esc(o.key)}" aria-pressed="${o.key === opt.key}">
+        <span class="name" title="${esc(o.label)}">${esc(o.label)}</span>
+        <span class="bar"><span style="width:${((o.prob ?? 0) * 100).toFixed(1)}%"></span></span>
+        <span class="val">${fmtPct(o.prob)}</span>
+        <span class="odds">${fmtOdds(o.prob)}</span>
+      </button>`).join("")}
+    </div>
+    ${shown.length > MAX_OPTIONS ? `<div class="note">… et ${shown.length - MAX_OPTIONS} autres (utilise la recherche pour les trouver).</div>` : ""}
+    ${ev.multi ? `<div class="note">Somme des probabilités : ${fmtPct(sum)}. L'écart à 100 % vient de la marge des carnets d'ordres et des issues peu liquides.</div>` : ""}` : "";
+
+  el.innerHTML = `
+    <h2>${esc(ev.title)}</h2>
+    <div class="meta">${ev.end ? `Échéance ${fmtDate(ev.end)} · ` : ""}${fmtUsd(ev.vol)} échangés en 24 h · ${fmtUsd(ev.oi)} engagés
+      ${ev.slug ? ` · <a href="https://polymarket.com/event/${encodeURIComponent(ev.slug)}" target="_blank" rel="noopener">voir sur Polymarket</a>` : ""}</div>
+    ${optionsHtml}
+    <div class="big"><span class="num">${fmtPct(opt?.prob)}</span><span class="lbl">« ${esc(opt?.label)} » · cote ${fmtOdds(opt?.prob)}</span>${deltaHtml(opt?.change)}<span class="lbl">${fmtUsd(opt?.vol || 0)} en 24 h</span></div>
+    ${payoffHtml(opt?.prob)}
+    <div class="section-title">
+      <span>Historique de la probabilité</span>
+      <span class="seg" role="group" aria-label="Période">${Object.keys(RANGES).map((r) => `<button type="button" class="btn" data-range="${r}" aria-pressed="${r === state.range}">${r}</button>`).join("")}</span>
+    </div>
+    <div class="chart" id="chart"><div class="empty">Chargement…</div></div>
+    <div class="two">
+      <div><div class="section-title"><span>Carnet d'ordres</span></div><div id="book"><div class="note">Chargement…</div></div></div>
+      <div><div class="section-title"><span>Dernières transactions</span></div><div id="trades"><div class="note">Chargement…</div></div></div>
+    </div>
+    <div class="note">Prix d'un contrat qui paie 1 USDC si l'issue se réalise : 0,62 = 62 % de probabilité implicite, soit une cote de ×1,61.</div>`;
+
+  if (opt) loadDetailData(opt);
+}
+
+let detailToken = 0;
+async function loadDetailData(opt) {
+  const token = ++detailToken;
+  const { s, fidelity } = RANGES[state.range];
+  const now = Math.floor(Date.now() / 1000);
+  const [history, book, trades] = await Promise.allSettled([
+    get(`${CLOB}/prices-history?market=${opt.token}&startTs=${now - s}&fidelity=${fidelity}`),
+    get(`${CLOB}/book?token_id=${opt.token}`),
+    get(`${DATA}/trades?market=${opt.conditionId}&limit=12`),
+  ]);
+  if (token !== detailToken) return; // a newer selection superseded this one
+
+  const chartEl = document.getElementById("chart");
+  const pts = history.status === "fulfilled" ? (history.value.history || []).map((h) => ({ t: h.t * 1000, v: Number(h.p) })) : [];
+  if (pts.length) drawLineChart(chartEl, pts);
+  else chartEl.innerHTML = `<div class="empty">${history.status === "rejected" ? "Historique indisponible." : "Aucun prix sur cette période."}</div>`;
+
+  const levels = (side) => (side || []).map((l) => ({ px: Number(l.price), sz: Number(l.size) }));
+  document.getElementById("book").innerHTML = book.status === "fulfilled"
+    ? bookHtml({
+        asks: levels(book.value.asks).sort((a, b) => a.px - b.px),
+        bids: levels(book.value.bids).sort((a, b) => b.px - a.px),
+      })
+    : `<div class="note">Indisponible.</div>`;
+  document.getElementById("trades").innerHTML = trades.status === "fulfilled"
+    ? tradesHtml(trades.value.map((t) => ({ time: t.timestamp * 1000, buy: t.side === "BUY", px: Number(t.price), sz: Number(t.size), label: t.outcome })))
+    : `<div class="note">Indisponible.</div>`;
+}
+
+// ---------- Data refresh ----------
+
+let refreshToken = 0;
+async function refresh() {
+  const token = ++refreshToken;
+  const dot = document.getElementById("dot");
+  try {
+    const cat = CATEGORIES.find((c) => c.label === state.category);
+    const markets = await loadMarkets(cat.tag);
+    if (token !== refreshToken) return; // the category changed meanwhile
+    state.events = buildEvents(markets);
+    dot.className = "dot live";
+    document.getElementById("updated").textContent = `Mis à jour à ${new Date().toLocaleTimeString("fr-FR")}`;
+    renderKpis();
+    renderList();
+    if (state.selected && !document.querySelector("#chart:hover")) loadFullEvent(state.selected);
+  } catch (e) {
+    if (token !== refreshToken) return;
+    dot.className = "dot err";
+    document.getElementById("updated").textContent = `Erreur de chargement (${e.message}). Nouvel essai dans 1 min.`;
+    if (!state.events.length) document.getElementById("rows").innerHTML = `<div class="empty">Impossible de joindre l'API Polymarket.</div>`;
+  }
+}
+
+// ---------- Events ----------
+
+document.getElementById("rows").addEventListener("click", (e) => {
+  const row = e.target.closest(".row");
+  if (!row) return;
+  selectEvent(row.dataset.id);
+  if (window.matchMedia("(max-width: 960px)").matches) document.getElementById("detail").scrollIntoView({ behavior: "smooth" });
+});
+document.getElementById("detail").addEventListener("click", (e) => {
+  const opt = e.target.closest("[data-opt]");
+  const range = e.target.closest("[data-range]");
+  if (opt) { state.selectedOption = opt.dataset.opt; renderDetail(); }
+  if (range) { state.range = range.dataset.range; renderDetail(); }
+});
+document.getElementById("cats").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-cat]");
+  if (!b || b.dataset.cat === state.category) return;
+  state.category = b.dataset.cat;
+  renderCategories();
+  document.getElementById("rows").innerHTML = `<div class="empty">Chargement des marchés…</div>`;
+  refresh();
+});
+for (const id of ["q", "sort"]) document.getElementById(id).addEventListener("input", renderList);
+document.getElementById("expired").addEventListener("change", () => { renderKpis(); renderList(); renderDetail(); });
+document.getElementById("refresh").addEventListener("click", refresh);
+setupThemeToggle(document.getElementById("theme"));
+
+renderCategories();
+refresh();
+setInterval(refresh, REFRESH_MS);
+</script>
+</body>
+</html>
