@@ -22,6 +22,16 @@ function fmtOdds(p) {
   const o = 1 / p;
   return `×${o.toLocaleString("fr-FR", { maximumFractionDigits: o < 10 ? 2 : o < 100 ? 1 : 0 })}`;
 }
+// Turns a fetch failure into a message that says what to check.
+function describeError(e, host) {
+  if (e instanceof TypeError) {
+    const local = location.protocol === "file:"
+      ? " Si tu as ouvert le fichier directement, essaie avec un serveur local : python3 -m http.server -d dashboard 8000, puis http://localhost:8000."
+      : "";
+    return `Le navigateur n'a pas pu joindre ${host} : connexion bloquée (bloqueur de publicités, pare-feu, réseau d'entreprise ou blocage par le fournisseur d'accès).${local}`;
+  }
+  return `Erreur de l'API ${host} (${e.message}).`;
+}
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 function deltaHtml(change) {
