@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Outcomes Hyperliquid</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-0: #f4f4f2;
+    --surface-1: #fcfcfb;
+    --surface-2: #efeeeb;
+    --border: #e1e0dc;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #7b7a75;
+    --series-1: #2a78d6;
+    --series-1-soft: #cde2fb;
+    --grid: #ebeae6;
+    --good: #0f8a4a;
+    --critical: #d03b3b;
+    --bid: #1baf7a;
+    --ask: #e34948;
+    --focus: #2a78d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface-0: #111110;
+      --surface-1: #1a1a19;
+      --surface-2: #242422;
+      --border: #33332f;
+      --text-primary: #f0efec;
+      --text-secondary: #c3c2b7;
+      --text-muted: #8f8e86;
+      --series-1: #3987e5;
+      --series-1-soft: #1c3a5e;
+      --grid: #2a2a27;
+      --good: #3fbf7a;
+      --critical: #ef6b6b;
+      --bid: #199e70;
+      --ask: #e66767;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-0: #111110;
+    --surface-1: #1a1a19;
+    --surface-2: #242422;
+    --border: #33332f;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8f8e86;
+    --series-1: #3987e5;
+    --series-1-soft: #1c3a5e;
+    --grid: #2a2a27;
+    --good: #3fbf7a;
+    --critical: #ef6b6b;
+    --bid: #199e70;
+    --ask: #e66767;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--surface-0);
+    color: var(--text-primary);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 20px 16px 40px; }
+
+  header.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--text-secondary); margin: 2px 0 0; }
+  .status { display: flex; align-items: center; gap: 10px; color: var(--text-muted); font-size: 13px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+  .dot.live { background: var(--good); }
+  .dot.err { background: var(--critical); }
+  .btn {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 10px; cursor: pointer;
+  }
+  .btn:hover { background: var(--surface-2); }
+  .btn[aria-pressed="true"] { background: var(--text-primary); color: var(--surface-1); border-color: var(--text-primary); }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .notice {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px 12px; color: var(--text-secondary); font-size: 13px; margin-bottom: 16px;
+  }
+
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .kpi { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+  .kpi .label { color: var(--text-secondary); font-size: 12px; }
+  .kpi .value { font-size: 22px; font-weight: 600; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kpi .hint { color: var(--text-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .filters input[type="search"], .filters select {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
+  }
+  .filters input[type="search"] { flex: 1 1 220px; min-width: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .check { display: inline-flex; gap: 6px; align-items: center; color: var(--text-secondary); font-size: 13px; }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .panel { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; min-width: 0; }
+
+  .list-head, .row {
+    display: grid; grid-template-columns: minmax(0, 1fr) 150px 72px 92px; gap: 12px; align-items: center; padding: 10px 14px;
+  }
+  .list-head { color: var(--text-muted); font-size: 12px; border-bottom: 1px solid var(--border); }
+  .list-head .r, .row .r { text-align: right; }
+  .rows { max-height: 72vh; overflow-y: auto; }
+  .row { width: 100%; border: 0; border-bottom: 1px solid var(--grid); background: transparent; text-align: left; cursor: pointer; }
+  .row:hover { background: var(--surface-2); }
+  .row[aria-pressed="true"] { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--series-1); }
+  .row .title, .row .meta { display: block; }
+  .row .title { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .meta { color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { display: inline-block; font-size: 11px; color: var(--text-secondary); background: var(--surface-2); border-radius: 4px; padding: 0 5px; margin-right: 6px; }
+  .prob { display: grid; grid-template-columns: 1fr 44px; gap: 8px; align-items: center; }
+  .prob .val { text-align: right; font-weight: 600; }
+  .bar { height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--series-1); border-radius: 0 3px 3px 0; }
+  .delta { font-size: 13px; white-space: nowrap; }
+  .delta .arrow-up { color: var(--good); }
+  .delta .arrow-down { color: var(--critical); }
+  .empty { padding: 24px 14px; color: var(--text-muted); text-align: center; }
+
+  .detail { padding: 16px; position: sticky; top: 12px; }
+  .detail h2 { font-size: 17px; margin: 0 0 2px; }
+  .detail .meta { color: var(--text-secondary); font-size: 13px; }
+  .big { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; margin: 12px 0; }
+  .big .num { font-size: 32px; font-weight: 650; }
+  .big .lbl { color: var(--text-secondary); }
+  .section-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 18px 0 8px; font-weight: 600; font-size: 13px; }
+  .seg { display: inline-flex; gap: 4px; }
+  .seg .btn { padding: 2px 8px; font-size: 12px; white-space: nowrap; }
+  .chart { position: relative; }
+  .chart svg { display: block; width: 100%; height: 220px; }
+  .chart .axis { fill: var(--text-muted); font-size: 11px; }
+  .chart .gridline { stroke: var(--grid); stroke-width: 1; }
+  .chart .line { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .chart .area { fill: var(--series-1); opacity: 0.08; }
+  .chart .cross { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 3 3; }
+  .tooltip {
+    position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 8px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12); white-space: nowrap;
+  }
+  .tooltip .t { color: var(--text-muted); }
+  .tooltip .v { font-weight: 600; }
+
+  .options { display: flex; flex-direction: column; gap: 2px; }
+  .opt { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 48px; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 8px; border: 0; background: transparent; cursor: pointer; text-align: left; }
+  .opt:hover { background: var(--surface-2); }
+  .opt[aria-pressed="true"] { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--series-1); }
+  .opt .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .opt .bar { height: 10px; border-radius: 0 4px 4px 0; }
+  .opt .val { text-align: right; font-weight: 600; }
+  .note { color: var(--text-muted); font-size: 12px; margin-top: 6px; }
+
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  table.mini { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.mini th { color: var(--text-muted); font-weight: 500; text-align: right; padding: 3px 4px; }
+  table.mini th:first-child, table.mini td:first-child { text-align: left; }
+  table.mini td { text-align: right; padding: 3px 4px; position: relative; }
+  .depth { position: absolute; inset: 1px 0 1px auto; opacity: 0.16; border-radius: 2px 0 0 2px; }
+  .side-buy { color: var(--good); }
+  .side-sell { color: var(--critical); }
+
+  @media (max-width: 960px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    .detail { position: static; }
+    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 560px) {
+    .list-head, .row { grid-template-columns: minmax(0, 1fr) 96px 64px; }
+    .list-head .vol, .row .vol { display: none; }
+    .prob { grid-template-columns: 1fr; }
+    .prob .bar { display: none; }
+    .two { grid-template-columns: 1fr; }
+    .kpi .value { font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Marchés d'outcomes Hyperliquid</h1>
+      <p class="sub">Probabilités implicites, volumes et carnets d'ordres, en lecture seule.</p>
+    </div>
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <span id="updated">Chargement…</span>
+      <button class="btn" id="refresh" type="button">Actualiser</button>
+      <button class="btn" id="theme" type="button">Thème</button>
+    </div>
+  </header>
+
+  <div class="notice">
+    Données publiques de l'API <code>info</code> d'Hyperliquid. Aucun wallet, aucune clé, aucun ordre :
+    cet outil sert uniquement à consulter et analyser les marchés.
+  </div>
+
+  <section class="kpis" aria-label="Indicateurs">
+    <div class="kpi"><div class="label">Marchés ouverts</div><div class="value" id="k-count">–</div><div class="hint" id="k-count-hint">&nbsp;</div></div>
+    <div class="kpi"><div class="label">Volume 24 h</div><div class="value" id="k-vol">–</div><div class="hint">en USDC, tous marchés</div></div>
+    <div class="kpi"><div class="label">Marché le plus actif</div><div class="value" id="k-top">–</div><div class="hint" id="k-top-hint">&nbsp;</div></div>
+    <div class="kpi"><div class="label">Plus forte variation 24 h</div><div class="value" id="k-move">–</div><div class="hint" id="k-move-hint">&nbsp;</div></div>
+  </section>
+
+  <div class="filters">
+    <input type="search" id="q" placeholder="Rechercher (équipe, actif, entreprise…)" aria-label="Rechercher">
+    <select id="sort" aria-label="Trier par">
+      <option value="vol">Trier : volume 24 h</option>
+      <option value="move">Trier : variation 24 h</option>
+      <option value="end">Trier : échéance proche</option>
+      <option value="prob">Trier : probabilité</option>
+    </select>
+    <label class="check"><input type="checkbox" id="expired"> Inclure les marchés échus</label>
+  </div>
+  <div class="filters"><div class="chips" id="cats" role="group" aria-label="Catégories"></div></div>
+
+  <div class="layout">
+    <section class="panel" aria-label="Liste des marchés">
+      <div class="list-head">
+        <span>Marché</span><span>Probabilité</span><span class="r">24 h</span><span class="r vol">Volume</span>
+      </div>
+      <div class="rows" id="rows"><div class="empty">Chargement des marchés…</div></div>
+    </section>
+    <section class="panel detail" id="detail" aria-live="polite">
+      <div class="empty">Sélectionne un marché pour voir son historique et son carnet d'ordres.</div>
+    </section>
+  </div>
+</div>
+
+<script>
+const API = "https://api.hyperliquid.xyz/info";
+const REFRESH_MS = 30_000;
+const META_REFRESH_MS = 5 * 60_000;
+
+const CATEGORIES = ["Tous", "Crypto", "Bourse", "Sport", "Taux directeurs", "Entreprises", "Récompenses", "Autres"];
+const RANGES = {
+  "24 h": { ms: 86_400_000, interval: "15m" },
+  "7 j": { ms: 7 * 86_400_000, interval: "1h" },
+  "30 j": { ms: 30 * 86_400_000, interval: "4h" },
+  "1 an": { ms: 365 * 86_400_000, interval: "1d" },
+};
+
+const state = {
+  meta: null,
+  metaAt: 0,
+  ctx: new Map(),        // coin -> asset context (mid, prevDayPx, volume)
+  markets: [],
+  category: "Tous",
+  selected: null,        // market id
+  selectedOption: null,  // outcome id inside a multi-option market
+  range: "7 j",
+  lastOk: 0,
+};
+
+// ---------- API ----------
+
+async function info(body) {
+  const res = await fetch(API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  return res.json();
+}
+
+// An outcome trades as two tokens, one per side: "#<outcome><side>".
+const coinOf = (outcome, side = 0) => `#${outcome}${side}`;
+
+// ---------- Parsing ----------
+
+function parseDesc(s) {
+  const out = {};
+  for (const part of (s || "").split("|")) {
+    const i = part.indexOf(":");
+    if (i > 0) out[part.slice(0, i)] = part.slice(i + 1);
+  }
+  return out;
+}
+
+// "20261030-1335" (UTC) -> Date
+function parseTime(s) {
+  const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})$/.exec(s || "");
+  return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5])) : null;
+}
+
+const dtFmt = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const dFmt = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+const fmtDate = (d) => (d ? dtFmt.format(d) : "–");
+const fmtDay = (d) => (d ? dFmt.format(d) : "–");
+const fmtNum = (n) => Number(n).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+const fmtPx = (p) => (p == null || isNaN(p) ? "–" : `${(p * 100).toFixed(1)} %`);
+const fmtPct = (p) => (p == null || isNaN(p) ? "–" : `${(p * 100).toFixed(p < 0.1 || p > 0.9 ? 1 : 0)} %`);
+function fmtUsd(n) {
+  if (n >= 1e6) return `${(n / 1e6).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} M$`;
+  if (n >= 1e3) return `${(n / 1e3).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} k$`;
+  return `${Math.round(n).toLocaleString("fr-FR")} $`;
+}
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const assetName = (perp) => (perp || "?").replace(/^xyz:/, "");
+const isStock = (perp) => /^xyz:/.test(perp || "");
+
+function sideLabel(spec, d) {
+  let n = (spec?.name || "").replace(/^template:/, "");
+  n = n.replace(/\{(\w+)\}/g, (_, k) => d[k] ?? k);
+  return { Yes: "Oui", No: "Non", Over: "Plus", Under: "Moins" }[n] || n;
+}
+
+function sportsSubtitle(d) {
+  return [d.competition, d.stage, d.scheduledStart && `début ${fmtDate(parseTime(d.scheduledStart))}`].filter(Boolean).join(" · ");
+}
+
+// Turns a standalone outcome into a readable market.
+function describeOutcome(o) {
+  const d = parseDesc(o.description);
+  const t = o.name.replace(/^template:/, "");
+  const sides = (o.sideSpecs || []).map((s) => sideLabel(s, d));
+  switch (t) {
+    case "binaryPrice": {
+      const end = parseTime(d.time);
+      return {
+        title: `${assetName(d.perp)} ≥ ${fmtNum(d.threshold)} le ${fmtDate(end)} ?`,
+        subtitle: d.priceDescription ? `Référence : ${d.priceDescription}` : "",
+        category: isStock(d.perp) ? "Bourse" : "Crypto", end, sides,
+      };
+    }
+    case "priceTouch": {
+      const end = parseTime(d.time);
+      return {
+        title: `${assetName(d.perp)} touche ${fmtNum(d.target)} avant le ${fmtDate(end)} ?`,
+        subtitle: d.priceDescription ? `Référence : ${d.priceDescription}` : "",
+        category: isStock(d.perp) ? "Bourse" : "Crypto", end, sides,
+      };
+    }
+    case "Recurring": {
+      const end = parseTime(d.expiry);
+      const target = d.targetPrice ? `≥ ${fmtNum(d.targetPrice)}` : "";
+      return {
+        title: `${d.underlying || "?"} ${target} le ${fmtDate(end)} ?`,
+        subtitle: `Marché récurrent${d.period ? ` (${d.period})` : ""}`,
+        category: "Crypto", end, sides,
+      };
+    }
+    case "sportsContestWinner":
+      return {
+        title: `${d.participantA} – ${d.participantB}`,
+        subtitle: sportsSubtitle(d) || d.sport || "",
+        category: "Sport", end: parseTime(d.resolutionDeadline), start: parseTime(d.scheduledStart), sides,
+        probLabel: `Victoire ${sides[0] || d.participantA}`,
+      };
+    case "sportsTotal":
+      return {
+        title: `${d.participantA} – ${d.participantB} : plus de ${fmtNum(d.line)} ${d.measure === "points" ? "points" : d.measure || ""} ?`,
+        subtitle: sportsSubtitle(d) || d.sport || "",
+        category: "Sport", end: parseTime(d.resolutionDeadline), start: parseTime(d.scheduledStart), sides,
+      };
+    case "sportsSpread":
+      return {
+        title: `${d.shortNameA || d.participantA} ${d.spread} face à ${d.participantB} ?`,
+        subtitle: `Handicap · ${sportsSubtitle(d) || d.sport || ""}`,
+        category: "Sport", end: parseTime(d.resolutionDeadline), start: parseTime(d.scheduledStart), sides,
+      };
+    case "companyIpoConfirmed": {
+      const end = parseTime(d.dateTime);
+      return { title: `IPO de ${d.company} avant le ${fmtDay(end)} ?`, subtitle: "Introduction en bourse", category: "Entreprises", end, sides };
+    }
+    case "companyIpoFirstDayMarketCap": {
+      const end = parseTime(d.listingDeadline);
+      return {
+        title: `${d.company} : capitalisation ≥ ${fmtNum(d.marketCapThresholdB)} Md$ au 1er jour de cotation ?`,
+        subtitle: `Si cotée avant le ${fmtDay(end)}`, category: "Entreprises", end, sides,
+      };
+    }
+    default:
+      return { title: `${t} ${o.description || ""}`.trim(), subtitle: "", category: "Autres", end: null, sides };
+  }
+}
+
+// Label of one option inside a multi-option question.
+function optionLabel(o, qd) {
+  const d = parseDesc(o.description);
+  const t = o.name.replace(/^template:/, "");
+  switch (t) {
+    case "sportsContestParticipant2":
+    case "sportsTournamentParticipant": return d.participant || "?";
+    case "sportsContestDraw2": return "Match nul";
+    case "awardCandidate": return d.subject || d.candidate || "?";
+    case "awardOther": return "Autre candidat";
+    case "policyRateNoChange": return "Statu quo";
+    case "policyRateDecrease": return "Baisse";
+    case "policyRateIncrease": return "Hausse";
+    case "Recurring Named Outcome": {
+      const th = (qd.priceThresholds || "").split(",").filter(Boolean).map(Number);
+      const i = Number(d.index);
+      if (!th.length || isNaN(i)) return `Tranche ${d.index}`;
+      if (i === 0) return `< ${fmtNum(th[0])}`;
+      if (i >= th.length) return `≥ ${fmtNum(th[th.length - 1])}`;
+      return `${fmtNum(th[i - 1])} – ${fmtNum(th[i])}`;
+    }
+    case "template fallback":
+    case "Recurring Fallback": return "Autre / aucun";
+    default: return o.description || t;
+  }
+}
+
+function describeQuestion(q) {
+  const d = parseDesc(q.description);
+  const t = q.name.replace(/^template:/, "");
+  switch (t) {
+    case "sportsContestResult":
+      return {
+        title: `${d.participantA} – ${d.participantB}`, subtitle: sportsSubtitle(d) || d.sport || "",
+        category: "Sport", end: parseTime(d.resolutionDeadline), start: parseTime(d.scheduledStart),
+      };
+    case "sportsTournamentWinner":
+      return { title: `Vainqueur : ${d.competition}${d.season ? ` ${d.season}` : ""}`, subtitle: d.sport || "", category: "Sport", end: parseTime(d.resolutionDeadline) };
+    case "policyRateDecision": {
+      const inst = /Federal Reserve/i.test(d.institution || "") ? "Fed" : d.institution;
+      return {
+        title: `${inst} : décision de taux (${d.decisionLabel || ""})`,
+        subtitle: `Annonce prévue le ${fmtDate(parseTime(d.scheduledDecision))}`,
+        category: "Taux directeurs", end: parseTime(d.decisionDeadline), start: parseTime(d.scheduledDecision),
+      };
+    }
+    case "awardWinner":
+      return { title: `${d.award} ${d.period || ""}`.trim(), subtitle: d.awardingBody || "", category: "Récompenses", end: parseTime(d.resolutionDeadline) };
+    case "Recurring":
+      return {
+        title: `${d.underlying || "?"} : prix le ${fmtDate(parseTime(d.expiry))}`,
+        subtitle: `Marché récurrent par tranches${d.period ? ` (${d.period})` : ""}`,
+        category: "Crypto", end: parseTime(d.expiry),
+      };
+    default:
+      return { title: t, subtitle: q.description || "", category: "Autres", end: null };
+  }
+}
+
+// ---------- Model ----------
+
+function quote(outcome) {
+  const c = state.ctx.get(coinOf(outcome, 0));
+  const c1 = state.ctx.get(coinOf(outcome, 1));
+  const num = (v) => (v == null || v === "" ? null : Number(v));
+  // Without a book there is no mid, and markPx is a 0.5 placeholder: show nothing rather than a fake 50 %.
+  const prob = num(c?.midPx);
+  // prevDayPx is 0 when the outcome had no price a day ago.
+  const prev = num(c?.prevDayPx) || null;
+  // Each trade moves both sides, so the money traded is the notional of side 0 plus side 1.
+  const vol = (num(c?.dayNtlVlm) || 0) + (num(c1?.dayNtlVlm) || 0);
+  return { prob, change: prob != null && prev != null ? prob - prev : null, vol };
+}
+
+function buildMarkets() {
+  const meta = state.meta;
+  if (!meta) return [];
+  const byId = new Map(meta.outcomes.map((o) => [o.outcome, o]));
+  const inQuestion = new Set();
+  const markets = [];
+
+  for (const q of meta.questions || []) {
+    const qd = parseDesc(q.description);
+    const ids = [...(q.namedOutcomes || []), q.fallbackOutcome].filter((id) => id != null && byId.has(id));
+    ids.forEach((id) => inQuestion.add(id));
+    const settled = new Set(q.settledNamedOutcomes || []);
+    const options = ids
+      .filter((id) => !settled.has(id))
+      .map((id) => ({ id, label: optionLabel(byId.get(id), qd), ...quote(id) }))
+      .sort((a, b) => (b.prob ?? -1) - (a.prob ?? -1));
+    if (!options.length) continue;
+    const top = options[0];
+    const moves = options.filter((o) => o.change != null);
+    const biggest = moves.sort((a, b) => Math.abs(b.change) - Math.abs(a.change))[0];
+    markets.push({
+      id: `q${q.question}`, kind: "question", ...describeQuestion(q), options,
+      prob: top.prob, probLabel: top.label, change: biggest ? biggest.change : null, changeLabel: biggest?.label,
+      vol: options.reduce((s, o) => s + o.vol, 0),
+      sum: options.reduce((s, o) => s + (o.prob || 0), 0),
+    });
+  }
+
+  for (const o of meta.outcomes) {
+    if (inQuestion.has(o.outcome)) continue;
+    const desc = describeOutcome(o);
+    markets.push({ id: `o${o.outcome}`, kind: "outcome", outcome: o.outcome, ...desc, ...quote(o.outcome), probLabel: desc.probLabel || `Probabilité « ${desc.sides[0] || "Oui"} »` });
+  }
+  return markets;
+}
+
+const isExpired = (m) => m.end && m.end.getTime() < Date.now();
+
+function visibleMarkets() {
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  const withExpired = document.getElementById("expired").checked;
+  const sort = document.getElementById("sort").value;
+  let list = state.markets.filter((m) =>
+    (withExpired || !isExpired(m)) &&
+    (state.category === "Tous" || m.category === state.category) &&
+    (!q || `${m.title} ${m.subtitle} ${(m.options || []).map((o) => o.label).join(" ")}`.toLowerCase().includes(q))
+  );
+  const by = {
+    vol: (a, b) => b.vol - a.vol,
+    move: (a, b) => Math.abs(b.change ?? 0) - Math.abs(a.change ?? 0),
+    end: (a, b) => (a.end?.getTime() ?? Infinity) - (b.end?.getTime() ?? Infinity),
+    prob: (a, b) => (b.prob ?? -1) - (a.prob ?? -1),
+  }[sort];
+  return list.sort(by);
+}
+
+// ---------- Rendering: list & KPIs ----------
+
+function deltaHtml(change) {
+  if (change == null || Math.abs(change) < 0.0005) return `<span class="delta">0</span>`;
+  const up = change > 0;
+  return `<span class="delta"><span class="${up ? "arrow-up" : "arrow-down"}" aria-hidden="true">${up ? "▲" : "▼"}</span> ${up ? "+" : "−"}${(Math.abs(change) * 100).toFixed(1)} pt</span>`;
+}
+
+function renderCategories() {
+  const counts = {};
+  for (const m of state.markets) if (document.getElementById("expired").checked || !isExpired(m)) counts[m.category] = (counts[m.category] || 0) + 1;
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  document.getElementById("cats").innerHTML = CATEGORIES
+    .filter((c) => c === "Tous" || counts[c])
+    .map((c) => `<button type="button" class="btn" data-cat="${esc(c)}" aria-pressed="${c === state.category}">${esc(c)} <span style="opacity:.6">${c === "Tous" ? total : counts[c]}</span></button>`)
+    .join("");
+}
+
+function renderKpis() {
+  const open = state.markets.filter((m) => !isExpired(m));
+  document.getElementById("k-count").textContent = open.length.toLocaleString("fr-FR");
+  document.getElementById("k-count-hint").textContent = `${state.meta.outcomes.length} outcomes, ${state.meta.questions.length} questions à plusieurs issues`;
+  document.getElementById("k-vol").textContent = fmtUsd(state.markets.reduce((s, m) => s + m.vol, 0));
+  const top = [...state.markets].sort((a, b) => b.vol - a.vol)[0];
+  document.getElementById("k-top").textContent = top ? top.title : "–";
+  document.getElementById("k-top-hint").textContent = top ? `${fmtUsd(top.vol)} échangés en 24 h` : "";
+  const mover = open.filter((m) => m.change != null && m.vol > 0).sort((a, b) => Math.abs(b.change) - Math.abs(a.change))[0];
+  document.getElementById("k-move").textContent = mover ? `${mover.change > 0 ? "+" : "−"}${(Math.abs(mover.change) * 100).toFixed(1)} pt` : "–";
+  document.getElementById("k-move-hint").textContent = mover ? `${mover.title}${mover.changeLabel ? ` (${mover.changeLabel})` : ""}` : "";
+}
+
+function renderList() {
+  const list = visibleMarkets();
+  const el = document.getElementById("rows");
+  if (!list.length) { el.innerHTML = `<div class="empty">Aucun marché ne correspond à ces filtres.</div>`; return; }
+  el.innerHTML = list.map((m) => {
+    const p = m.prob ?? 0;
+    const extra = m.kind === "question"
+      ? m.options.slice(0, 3).map((o) => `${esc(o.label)} ${fmtPct(o.prob)}`).join(" · ")
+      : esc(m.subtitle);
+    const when = m.start && m.start > Date.now() ? `début ${fmtDate(m.start)}` : m.end ? `échéance ${fmtDate(m.end)}` : "";
+    return `<button type="button" class="row" data-id="${m.id}" aria-pressed="${m.id === state.selected}">
+      <span style="min-width:0">
+        <span class="title" title="${esc(m.title)}">${esc(m.title)}</span>
+        <span class="meta"><span class="tag">${esc(m.category)}</span>${isExpired(m) ? "échu · " : ""}${esc(when)}${extra ? ` · ${extra}` : ""}</span>
+      </span>
+      <span class="prob" title="${esc(m.probLabel)}">
+        <span class="bar"><span style="width:${(p * 100).toFixed(1)}%"></span></span>
+        <span class="val">${fmtPct(m.prob)}</span>
+      </span>
+      <span class="r">${deltaHtml(m.change)}</span>
+      <span class="r vol">${m.vol ? fmtUsd(m.vol) : "–"}</span>
+    </button>`;
+  }).join("");
+}
+
+// ---------- Rendering: detail ----------
+
+function renderDetail() {
+  const el = document.getElementById("detail");
+  const m = state.markets.find((x) => x.id === state.selected);
+  if (!m) { el.innerHTML = `<div class="empty">Sélectionne un marché pour voir son historique et son carnet d'ordres.</div>`; return; }
+
+  let outcome = m.outcome;
+  let head;
+  if (m.kind === "question") {
+    if (!m.options.some((o) => o.id === state.selectedOption)) state.selectedOption = m.options[0].id;
+    outcome = state.selectedOption;
+    const opt = m.options.find((o) => o.id === outcome);
+    head = `
+      <div class="section-title"><span>Issues possibles</span><span class="note" style="margin:0">clique pour voir le détail</span></div>
+      <div class="options">${m.options.map((o) => `
+        <button type="button" class="opt" data-opt="${o.id}" aria-pressed="${o.id === outcome}">
+          <span class="name" title="${esc(o.label)}">${esc(o.label)}</span>
+          <span class="bar"><span style="width:${((o.prob ?? 0) * 100).toFixed(1)}%"></span></span>
+          <span class="val">${fmtPct(o.prob)}</span>
+        </button>`).join("")}
+      </div>
+      <div class="note">Somme des probabilités : ${fmtPct(m.sum)}. ${m.sum > 1
+        ? "L'excédent au-delà de 100 % correspond à la marge des carnets d'ordres."
+        : "Moins de 100 % : certaines issues n'ont pas encore de carnet d'ordres (–)."}</div>
+      <div class="big"><span class="num">${fmtPct(opt.prob)}</span><span class="lbl">« ${esc(opt.label)} »</span>${deltaHtml(opt.change)}<span class="lbl">${fmtUsd(opt.vol)} en 24 h</span></div>`;
+  } else {
+    head = `<div class="big"><span class="num">${fmtPct(m.prob)}</span><span class="lbl">${esc(m.probLabel)}</span>${deltaHtml(m.change)}<span class="lbl">${fmtUsd(m.vol)} en 24 h</span></div>`;
+  }
+
+  el.innerHTML = `
+    <h2>${esc(m.title)}</h2>
+    <div class="meta">${esc(m.subtitle)}${m.end ? ` · échéance ${fmtDate(m.end)}` : ""}</div>
+    ${head}
+    <div class="section-title">
+      <span>Historique de la probabilité</span>
+      <span class="seg" role="group" aria-label="Période">${Object.keys(RANGES).map((r) => `<button type="button" class="btn" data-range="${r}" aria-pressed="${r === state.range}">${r}</button>`).join("")}</span>
+    </div>
+    <div class="chart" id="chart"><div class="empty">Chargement…</div></div>
+    <div class="two">
+      <div><div class="section-title"><span>Carnet d'ordres</span></div><div id="book"><div class="note">Chargement…</div></div></div>
+      <div><div class="section-title"><span>Dernières transactions</span></div><div id="trades"><div class="note">Chargement…</div></div></div>
+    </div>
+    <div class="note">Prix d'un contrat qui paie 1 USDC si l'issue se réalise : 0,62 = 62 % de probabilité implicite.</div>`;
+
+  loadDetailData(outcome);
+}
+
+let detailToken = 0;
+async function loadDetailData(outcome) {
+  const token = ++detailToken;
+  const coin = coinOf(outcome, 0);
+  const { ms, interval } = RANGES[state.range];
+  const now = Date.now();
+  const [candles, book, trades] = await Promise.allSettled([
+    info({ type: "candleSnapshot", req: { coin, interval, startTime: now - ms, endTime: now } }),
+    info({ type: "l2Book", coin }),
+    info({ type: "recentTrades", coin }),
+  ]);
+  if (token !== detailToken) return; // a newer selection superseded this one
+
+  const chartEl = document.getElementById("chart");
+  if (candles.status === "fulfilled" && candles.value.length) {
+    drawLineChart(chartEl, candles.value.map((c) => ({ t: c.t, v: Number(c.c), n: c.n })));
+  } else {
+    chartEl.innerHTML = `<div class="empty">${candles.status === "rejected" ? "Historique indisponible." : "Aucune transaction sur cette période."}</div>`;
+  }
+  document.getElementById("book").innerHTML = book.status === "fulfilled" ? bookHtml(book.value) : `<div class="note">Indisponible.</div>`;
+  document.getElementById("trades").innerHTML = trades.status === "fulfilled" ? tradesHtml(trades.value) : `<div class="note">Indisponible.</div>`;
+}
+
+function bookHtml(book) {
+  const [bids = [], asks = []] = book.levels || [];
+  const b = bids.slice(0, 6), a = asks.slice(0, 6).reverse();
+  if (!b.length && !a.length) return `<div class="note">Carnet vide.</div>`;
+  const max = Math.max(...[...a, ...b].map((l) => Number(l.sz)), 1);
+  const row = (l, cls) => `<tr><td class="${cls}">${fmtPx(Number(l.px))}</td><td>${fmtNum(l.sz)}<span class="depth" style="width:${(Number(l.sz) / max) * 100}%;background:var(--${cls === "side-sell" ? "ask" : "bid"})"></span></td></tr>`;
+  const spread = a.length && b.length ? Number(asks[0].px) - Number(bids[0].px) : null;
+  return `<table class="mini"><thead><tr><th>Prix</th><th>Contrats</th></tr></thead><tbody>
+    ${a.map((l) => row(l, "side-sell")).join("")}
+    <tr><td colspan="2" style="text-align:center;color:var(--text-muted)">${spread != null ? `écart ${(spread * 100).toFixed(2)} pt` : "–"}</td></tr>
+    ${b.map((l) => row(l, "side-buy")).join("")}
+  </tbody></table>`;
+}
+
+function tradesHtml(trades) {
+  if (!trades.length) return `<div class="note">Aucune transaction récente.</div>`;
+  const tf = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return `<table class="mini"><thead><tr><th>Heure</th><th>Sens</th><th>Prix</th><th>Contrats</th></tr></thead><tbody>
+    ${trades.slice(0, 12).map((t) => `<tr>
+      <td>${tf.format(new Date(t.time))}</td>
+      <td class="${t.side === "B" ? "side-buy" : "side-sell"}">${t.side === "B" ? "Achat" : "Vente"}</td>
+      <td>${fmtPx(Number(t.px))}</td><td>${fmtNum(t.sz)}</td></tr>`).join("")}
+  </tbody></table>`;
+}
+
+function drawLineChart(el, pts) {
+  const W = 600, H = 220, m = { t: 10, r: 12, b: 24, l: 40 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const vs = pts.map((p) => p.v);
+  let lo = Math.min(...vs), hi = Math.max(...vs);
+  const pad = Math.max(0.05 - (hi - lo) / 2, 0.02);
+  lo = Math.max(0, lo - pad); hi = Math.min(1, hi + pad);
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1;
+  const x = (t) => m.l + (t1 === t0 ? iw / 2 : ((t - t0) / (t1 - t0)) * iw);
+  const y = (v) => m.t + (1 - (v - lo) / (hi - lo || 1)) * ih;
+
+  const step = niceStep((hi - lo) / 4);
+  const ticks = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) ticks.push(v);
+  const spanDays = (t1 - t0) / 86_400_000;
+  const xf = new Intl.DateTimeFormat("fr-FR", spanDays > 2 ? { day: "numeric", month: "short" } : { hour: "2-digit", minute: "2-digit" });
+  const xticks = [0, 0.33, 0.66, 1].map((f) => t0 + f * (t1 - t0));
+
+  const d = pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
+  const area = `${d}L${x(t1).toFixed(1)},${m.t + ih}L${x(t0).toFixed(1)},${m.t + ih}Z`;
+
+  el.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Historique de la probabilité">
+      ${ticks.map((v) => `<line class="gridline" x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}"/><text class="axis" x="${m.l - 6}" y="${y(v) + 4}" text-anchor="end">${Math.round(v * 100)} %</text>`).join("")}
+      ${xticks.map((t, i) => `<text class="axis" x="${x(t)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === 3 ? "end" : "middle"}">${xf.format(new Date(t))}</text>`).join("")}
+      <path class="area" d="${area}"/>
+      <path class="line" d="${d}" vector-effect="non-scaling-stroke"/>
+      <line class="cross" id="cross" y1="${m.t}" y2="${m.t + ih}" visibility="hidden" vector-effect="non-scaling-stroke"/>
+      <rect x="${m.l}" y="${m.t}" width="${iw}" height="${ih}" fill="transparent" id="hit"/>
+    </svg>
+    <div class="tooltip" id="tip" hidden></div>`;
+
+  // The SVG stretches horizontally, so the hover dot is an HTML element to stay round.
+  const svg = el.querySelector("svg");
+  const tip = el.querySelector("#tip");
+  const cross = el.querySelector("#cross");
+  const dot = document.createElement("span");
+  dot.style.cssText = "position:absolute;width:10px;height:10px;border-radius:50%;background:var(--series-1);border:2px solid var(--surface-1);transform:translate(-50%,-50%);pointer-events:none;display:none";
+  el.appendChild(dot);
+  const full = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+  const move = (ev) => {
+    const r = svg.getBoundingClientRect();
+    const px = ((ev.clientX - r.left) / r.width) * W;
+    const t = t0 + ((px - m.l) / iw) * (t1 - t0);
+    let best = pts[0];
+    for (const p of pts) if (Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+    const sx = (x(best.t) / W) * r.width, sy = (y(best.v) / H) * r.height;
+    cross.setAttribute("x1", x(best.t)); cross.setAttribute("x2", x(best.t)); cross.setAttribute("visibility", "visible");
+    dot.style.display = "block"; dot.style.left = `${sx}px`; dot.style.top = `${sy}px`;
+    tip.hidden = false;
+    tip.innerHTML = `<div class="t">${full.format(new Date(best.t))}</div><div class="v">${fmtPct(best.v)}</div><div class="t">${best.n} transaction${best.n > 1 ? "s" : ""}</div>`;
+    const tw = tip.offsetWidth;
+    tip.style.left = `${sx + 12 + tw > r.width ? Math.max(sx - 12 - tw, 0) : sx + 12}px`;
+    tip.style.top = `${Math.max(sy - 50, 0)}px`;
+  };
+  const leave = () => { tip.hidden = true; dot.style.display = "none"; cross.setAttribute("visibility", "hidden"); };
+  const hit = el.querySelector("#hit");
+  hit.addEventListener("pointermove", move);
+  hit.addEventListener("pointerdown", move);
+  hit.addEventListener("pointerleave", leave);
+}
+
+function niceStep(raw) {
+  const pow = 10 ** Math.floor(Math.log10(raw || 0.01));
+  const n = raw / pow;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * pow;
+}
+
+// ---------- Data refresh ----------
+
+async function refresh({ meta = false } = {}) {
+  const dot = document.getElementById("dot");
+  try {
+    const needMeta = meta || !state.meta || Date.now() - state.metaAt > META_REFRESH_MS;
+    const [m, spot] = await Promise.all([needMeta ? info({ type: "outcomeMeta" }) : null, info({ type: "spotMetaAndAssetCtxs" })]);
+    if (m) { state.meta = m; state.metaAt = Date.now(); }
+    state.ctx = new Map(spot[1].filter((c) => c.coin?.startsWith("#")).map((c) => [c.coin, c]));
+    state.markets = buildMarkets();
+    state.lastOk = Date.now();
+    dot.className = "dot live";
+    document.getElementById("updated").textContent = `Mis à jour à ${new Date().toLocaleTimeString("fr-FR")}`;
+    renderCategories();
+    renderKpis();
+    renderList();
+    updateDetailHeader();
+  } catch (e) {
+    dot.className = "dot err";
+    document.getElementById("updated").textContent = `Erreur de chargement (${e.message}). Nouvel essai dans 30 s.`;
+    if (!state.markets.length) document.getElementById("rows").innerHTML = `<div class="empty">Impossible de joindre l'API Hyperliquid.</div>`;
+  }
+}
+
+// On auto-refresh, redraw the detail panel only if the user isn't hovering the chart.
+function updateDetailHeader() {
+  if (!state.selected) return;
+  if (document.querySelector("#chart:hover")) return;
+  renderDetail();
+}
+
+// ---------- Events ----------
+
+document.getElementById("rows").addEventListener("click", (e) => {
+  const row = e.target.closest(".row");
+  if (!row) return;
+  state.selected = row.dataset.id;
+  state.selectedOption = null;
+  renderList();
+  renderDetail();
+  if (window.matchMedia("(max-width: 960px)").matches) document.getElementById("detail").scrollIntoView({ behavior: "smooth" });
+});
+document.getElementById("detail").addEventListener("click", (e) => {
+  const opt = e.target.closest("[data-opt]");
+  const range = e.target.closest("[data-range]");
+  if (opt) { state.selectedOption = Number(opt.dataset.opt); renderDetail(); }
+  if (range) { state.range = range.dataset.range; renderDetail(); }
+});
+document.getElementById("cats").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-cat]");
+  if (!b) return;
+  state.category = b.dataset.cat;
+  renderCategories();
+  renderList();
+});
+for (const id of ["q", "sort"]) document.getElementById(id).addEventListener("input", renderList);
+document.getElementById("expired").addEventListener("change", () => { renderCategories(); renderList(); });
+document.getElementById("refresh").addEventListener("click", () => refresh({ meta: true }));
+document.getElementById("theme").addEventListener("click", () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  root.dataset.theme = dark ? "light" : "dark";
+  try { localStorage.setItem("theme", root.dataset.theme); } catch {}
+});
+try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
+
+refresh({ meta: true });
+setInterval(refresh, REFRESH_MS);
+</script>
+</body>
+</html>
